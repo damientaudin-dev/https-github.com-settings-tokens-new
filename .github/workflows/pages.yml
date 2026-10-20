@@ -2,7 +2,7 @@ name: Publier Le Cercle (GitHub Pages)
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/le-cercle-software-mflhhv]
   workflow_dispatch:
 
 permissions:
