@@ -1,0 +1,25 @@
+{
+  "name": "Le Cercle — Up&In",
+  "short_name": "Le Cercle",
+  "description": "Logiciel de coordination du Family Office de l'Autonomie Up&In : bilan partagé, comptes rendus des intervenants, calendrier et mails aux seniors et aidants.",
+  "lang": "fr",
+  "id": "./",
+  "start_url": "./#/tableau",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#10214c",
+  "theme_color": "#10214c",
+  "categories": ["medical", "productivity", "business"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Nouveau rendez-vous", "url": "./#/rdv", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Calendrier", "url": "./#/calendrier", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Transmissions", "url": "./#/transmissions", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
