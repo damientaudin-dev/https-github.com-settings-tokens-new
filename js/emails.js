@@ -185,6 +185,28 @@
       }
     },
 
+    'aidants-offre': {
+      cible: 'aidants', label: 'Forfait proposé et coût total', noOffre: true,
+      build(s) {
+        const O = window.Offre, sel = O.selection(s), rec = O.recommend(s);
+        if (!sel) return { subject: 'Formule Up&In', body: "Le bilan partagé doit être réalisé avant de proposer une formule." };
+        const r = O.compute(sel);
+        return {
+          subject: `Formule d'accompagnement Up&In — ${S().seniorName(s.id, true)}`,
+          body: [`Bonjour ${aidantsPrenoms(s)},`, '',
+            `Suite au bilan partagé${rec ? ' du ' + shortDate(rec.bilanDate) : ''}, voici la formule d'accompagnement que nous vous proposons pour ${S().seniorName(s.id, true)}.`, '',
+            ...(rec ? ['POURQUOI CE FORFAIT', ...rec.raisons.map(x => '• ' + x), ''] : []),
+            `FORFAIT ${r.forfait.nom.toUpperCase()} — ${O.euro(r.forfaitMensuel)} par mois`, r.forfait.description || '', '',
+            ...(r.lignes.length ? ['OPTIONS UTILES', ...r.lignes.map(l => {
+              const why = rec && rec.options.find(o => o.option.id === l.id);
+              return `• ${l.nom} : ${O.euro(l.mensuel || l.unique)}${l.unite === 'unique' ? ' (une fois)' : ' par mois'}${l.unite === 'séance' ? ` — ${l.quantite} séance(s) × ${O.euro(l.prix)}` : ''}${why ? ` — conseillé car ${why.raison}` : ''}`;
+            }), ''] : []),
+            'COÛT TOTAL', ...O.totalLines(r), '',
+            'Nous restons à votre disposition pour ajuster cette proposition ensemble.', signature()].join('\n')
+        };
+      }
+    },
+
     // ---------- Pour les intervenants ----------
     'intervenant-demande': {
       cible: 'intervenants', label: 'Demande de compte rendu (intervenant)',
@@ -200,6 +222,20 @@
       }
     }
   };
+
+  // Chaque mail aux aidants rappelle le forfait, les options et le coût total.
+  Object.values(TEMPLATES).filter(t => t.cible === 'aidants' && !t.noOffre).forEach(t => {
+    const build = t.build;
+    t.build = (s, ctx) => {
+      const out = build(s, ctx);
+      const block = window.Offre ? window.Offre.textBlock(s) : [];
+      if (!block.length) return out;
+      const ins = '\n' + block.join('\n') + '\n';
+      const i = out.body.lastIndexOf('\nBien cordialement,');
+      out.body = i >= 0 ? out.body.slice(0, i) + ins + out.body.slice(i) : out.body + '\n' + ins;
+      return out;
+    };
+  });
 
   function recipients(senior, cible) {
     if (cible === 'senior') return senior.email ? [senior.email] : [];

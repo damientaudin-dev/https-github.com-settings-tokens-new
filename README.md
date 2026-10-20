@@ -7,6 +7,7 @@
 - le **calendrier des interventions** (prévue, réalisée, reportée, annulée), avec un **court compte rendu** à transmettre aux aidants ;
 - une **version du calendrier pour le senior** en gros caractères, imprimable : date, heure, intervention, **avec qui** et **pourquoi** ;
 - la **génération des mails** pour le senior, les aidants et les intervenants, pré-remplis à partir du dossier ;
+- le **forfait le plus adapté** : la recommandation s'appuie sur le bilan partagé (indice d'autonomie, GIR, domaines fragiles). L'application propose aussi les **options utiles**, conseillées selon les scores de chaque domaine, et calcule le **coût total** : coût mensuel, frais de mise en place, première année, remise et crédit d'impôt estimé. **Chaque mail aux aidants rappelle le forfait, les options et le coût total.** La grille tarifaire se modifie dans *Réglages › Forfaits & tarifs* ; les tarifs fournis ne sont qu'un exemple, à remplacer par les vôtres ;
 - la saisie des **rendez-vous**, **pendant** l'entretien (chronomètre, notation par domaine, sauvegarde automatique) ou **après**, à partir de la photo des notes papier.
 
 Le logo Up&In est utilisé tel quel (`assets/logo-upandin.jpg`). La charte reprend ses couleurs : bleu nuit `#10214c`, or `#b8892f` / `#e6c06f`, ivoire, avec une typographie à empattements.
@@ -49,6 +50,7 @@ index.html            application (une seule page)
 manifest.webmanifest  installation (nom, icônes, couleurs)
 sw.js                 fonctionnement hors ligne
 css/style.css         charte graphique Up&In
+js/offre.js           forfaits, options, recommandation et calcul du coût
 js/store.js           données (IndexedDB), domaines du bilan, démonstration
 js/charts.js          graphiques SVG : radar, courbes, barres, schéma du cercle
 js/emails.js          modèles de mails

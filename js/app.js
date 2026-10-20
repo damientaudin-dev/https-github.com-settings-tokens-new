@@ -83,7 +83,12 @@
   // ---------- Lignes éditables (tableaux du bilan) ----------
   function fieldHtml(c, v) {
     const val = esc(v ?? '');
-    if (c.type === 'select') return `<select data-k="${c.k}" style="flex:${c.w || 1}">${c.options.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    if (c.type === 'select') {
+      return `<select data-k="${c.k}" style="flex:${c.w || 1}">${c.options.map(o => {
+        const ov = typeof o === 'object' ? o.v : o, ol = typeof o === 'object' ? o.l : o;
+        return `<option value="${esc(ov)}" ${String(ov) === String(v ?? '') ? 'selected' : ''}>${esc(ol)}</option>`;
+      }).join('')}</select>`;
+    }
     return `<input data-k="${c.k}" type="${c.type || 'text'}" value="${val}" placeholder="${esc(c.label)}" style="flex:${c.w || 1}" ${c.type === 'number' ? 'inputmode="decimal" step="any"' : ''}>`;
   }
   function rowHtml(cols, r) {
@@ -327,7 +332,7 @@
     return `<a class="senior-card" href="#/senior/${s.id}">
       <span class="avatar">${esc(initials(s))}</span>
       <span class="sc-body"><b class="sc-name">${esc(s.prenom)} ${esc(s.nom)}</b>
-        <span class="muted">${esc(age(s.naissance))}${b && b.gir ? ' · GIR ' + b.gir : ''}</span>
+        <span class="muted">${esc(age(s.naissance))}${b && b.gir ? ' · GIR ' + b.gir : ''}${formuleShort(s)}</span>
         <span class="sc-next">${next ? `Prochaine : ${fmt(next.date)} — ${esc(next.type)}` : 'Aucune intervention prévue'}</span></span>
       <span class="sc-score">${g != null ? `<b>${g}</b><small>/10</small>` : '<small>Pas de bilan</small>'}${al ? `<span class="chip st-annulee">! ${al}</span>` : ''}</span>
     </a>`;
@@ -424,7 +429,7 @@
     const s = S.senior(parts[1]);
     if (!s) { main.innerHTML = emptyState('Dossier introuvable.', '<a class="btn" href="#/seniors">Retour</a>'); return; }
     const tab = parts[2] || 'synthese';
-    const tabs = [['synthese', 'Synthèse'], ['bilan', 'Bilan partagé'], ['cercle', 'Le Cercle'], ['cr', 'Comptes rendus'], ['calendrier', 'Calendrier'], ['mails', 'Mails']];
+    const tabs = [['synthese', 'Synthèse'], ['bilan', 'Bilan partagé'], ['cercle', 'Le Cercle'], ['offre', 'Forfait & coût'], ['cr', 'Comptes rendus'], ['calendrier', 'Calendrier'], ['mails', 'Mails']];
     const b = S.lastBilan(s.id);
     main.innerHTML = `<header class="senior-head">
         <span class="avatar lg">${esc(initials(s))}</span>
@@ -435,7 +440,7 @@
       <nav class="tabs no-print">${tabs.map(([k, l]) => `<a href="#/senior/${s.id}/${k}" class="${k === tab ? 'active' : ''}">${l}</a>`).join('')}</nav>
       <div id="tab"></div>`;
     const el = document.getElementById('tab');
-    ({ synthese: tabSynthese, bilan: tabBilan, cercle: tabCercle, cr: tabCR, calendrier: tabCalendar, mails: tabMails }[tab] || tabSynthese)(s, el);
+    ({ synthese: tabSynthese, bilan: tabBilan, cercle: tabCercle, offre: tabOffre, cr: tabCR, calendrier: tabCalendar, mails: tabMails }[tab] || tabSynthese)(s, el);
   }
 
   function tabSynthese(s, el) {
@@ -460,6 +465,7 @@
       <section class="card"><h2>Situation</h2>
         <dl class="dl"><dt>Situation de vie</dt><dd>${nl2br(s.situation) || '—'}</dd>
         <dt>Préférences</dt><dd>${nl2br(s.notes) || '—'}</dd>
+        <dt>Formule Up&amp;In</dt><dd>${formuleLine(s)}</dd>
         <dt>Contact</dt><dd>${esc([s.tel, s.email].filter(Boolean).join(' · ')) || '—'}</dd>
         <dt>Aidants</dt><dd>${(s.aidants || []).map(a => `${esc(a.prenom)} ${esc(a.nom)} (${esc(a.lien)}${a.principal ? ', principal' : ''})`).join('<br>') || '—'}</dd></dl>
       </section>
@@ -521,6 +527,7 @@
         ${S.DOMAINES.map(d => { const v = Number(b.domaines?.[d.key]?.score); const p = prev ? Number(prev.domaines?.[d.key]?.score) : NaN; const dv = isNaN(p) || isNaN(v) ? '' : v - p;
           return `<tr><td>${esc(d.label)}</td><td class="num"><b>${isNaN(v) ? '—' : v}</b>/10</td><td class="num">${dv === '' ? '' : dv > 0 ? `<span class="up">▲ ${dv}</span>` : dv < 0 ? `<span class="down">▼ ${-dv}</span>` : '='}</td><td>${esc(b.domaines?.[d.key]?.commentaire || '')}</td></tr>`; }).join('')}
         </tbody></table></section>
+      <section class="card"><h2>Formule Up&amp;In adaptée</h2><p>${formuleLine(s)}</p></section>
       <section class="card"><h2>Plan d'action</h2>
         ${(b.planAction || []).length ? `<table class="table"><thead><tr><th>Action</th><th>Responsable</th><th>Échéance</th><th>Statut</th></tr></thead><tbody>
         ${b.planAction.map(p => `<tr><td>${esc(p.action)}</td><td>${esc(p.responsable)}</td><td>${fmt(p.echeance)}</td><td><span class="chip ${p.statut === 'fait' ? 'st-faite' : p.statut === 'en cours' ? 'st-reportee' : 'st-prevue'}">${esc(p.statut)}</span></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Aucune action.</p>'}
@@ -614,6 +621,122 @@
         <section class="card"><h2>Intervenants non soignants</h2><ul class="people">${people((s.intervenants || []).filter(i => i.categorie !== 'soignant'), 'intervenant') || '<li class="muted">Aucun.</li>'}</ul>
           <button class="btn sm ghost" data-act="person" data-senior="${s.id}" data-kind="intervenant">+ Intervenant</button></section>
       </div></div>`;
+  }
+
+  // ---------- Forfait & coût ----------
+  function formuleShort(s) {
+    const sel = window.Offre.selection(s);
+    const f = sel && S.state.offre.forfaits.find(x => x.id === sel.forfaitId);
+    return f ? ` · ${esc(f.nom)}${sel.source === 'retenue' ? '' : ' (conseillé)'}` : '';
+  }
+  function formuleLine(s) {
+    const O = window.Offre, sel = O.selection(s);
+    if (!sel) return '<span class="muted">À déterminer après le bilan partagé</span>';
+    const r = O.compute(sel);
+    if (!r.forfait) return '—';
+    return `<a href="#/senior/${s.id}/offre">${esc(r.forfait.nom)}${r.lignes.length ? ` + ${r.lignes.length} option(s)` : ''}</a> — <b>${O.euro(r.mensuel)}/mois</b>, ${O.euro(r.premiereAnnee)} la première année
+      ${sel.source === 'retenue' ? `<span class="chip ${sel.statut === 'acceptée' ? 'st-faite' : 'st-prevue'}">${esc(sel.statut || 'proposée')}</span>` : '<span class="chip st-transmis">recommandée</span>'}`;
+  }
+
+  function tabOffre(s, el, override) {
+    const O = window.Offre, c = S.state.offre;
+    const rec = O.recommend(s);
+    const base = override || O.selection(s) || { forfaitId: (c.forfaits[0] || {}).id, options: [], remise: 0, statut: 'proposée', source: 'manuelle' };
+    const sel = JSON.parse(JSON.stringify(base));
+    const recOpt = (id) => rec && rec.options.find(o => o.option.id === id);
+    const chosen = (id) => sel.options.find(o => o.id === id);
+    el.innerHTML = `
+      <div class="print-only print-head"><img src="assets/logo-upandin.jpg" alt="Up&In"><div><h1>Proposition d'accompagnement</h1><p>${esc(S.seniorName(s.id, true))} — ${fmtLong(today())}</p></div></div>
+      <div class="toolbar no-print">
+        <span class="chip ${sel.source === 'retenue' ? 'st-faite' : 'st-transmis'}">${sel.source === 'retenue' ? 'Formule enregistrée' : sel.source === 'recommandee' ? 'Recommandation automatique (non enregistrée)' : 'Saisie manuelle'}</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" data-act="print">⎙ Imprimer / PDF</button>
+        <a class="btn gold sm" href="#/mails?senior=${s.id}&tpl=aidants-offre">✉ Envoyer aux aidants</a>
+      </div>
+      <div class="grid-offre"><div>
+        <section class="card reco"><h2>Recommandation</h2>
+          ${rec ? `<p>D'après le bilan partagé du ${fmt(rec.bilanDate)}, le forfait le plus adapté est <b class="reco-name">${esc(rec.forfait.nom)}</b>${rec.options.length ? `, avec ${rec.options.length} option(s) utile(s)` : ''}.</p>
+            <ul class="reasons">${rec.raisons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+            <button type="button" class="btn sm ghost no-print" id="apply-rec">Appliquer la recommandation</button>`
+            : `<p class="muted">Réalisez le bilan partagé pour obtenir une recommandation automatique.</p><a class="btn sm gold no-print" href="#/bilan/${s.id}/new">Réaliser le bilan partagé</a>`}
+        </section>
+        <section class="card"><h2>Forfait</h2>
+          <div class="forfaits">${c.forfaits.map(f => `<label class="forfait ${f.id === sel.forfaitId ? 'on' : ''}">
+            <input type="radio" name="forfait" value="${esc(f.id)}" ${f.id === sel.forfaitId ? 'checked' : ''}>
+            <span class="ff-top"><b>${esc(f.nom)}</b>${rec && rec.forfait && rec.forfait.id === f.id ? '<span class="chip st-transmis">★ Recommandé</span>' : ''}</span>
+            <span class="ff-prix">${O.euro(f.prix)}<small> / mois</small></span>
+            <span class="ff-desc">${esc(f.description)}</span></label>`).join('') || '<p class="muted">Aucun forfait : définissez votre grille dans Réglages.</p>'}</div>
+        </section>
+        <section class="card"><h2>Options <small>les options conseillées découlent des domaines fragiles du bilan</small></h2>
+          <table class="table opt-table"><thead><tr><th></th><th>Option</th><th>Tarif</th><th class="num">Qté / mois</th><th class="num">Sous-total</th></tr></thead><tbody>
+          ${c.options.map(o => { const ch = chosen(o.id), ro = recOpt(o.id); return `<tr class="${ch ? 'on' : ''}">
+            <td><input type="checkbox" data-opt="${esc(o.id)}" ${ch ? 'checked' : ''} aria-label="${esc(o.nom)}"></td>
+            <td><b>${esc(o.nom)}</b>${ro ? ` <span class="chip st-transmis">Conseillé · ${esc(ro.raison)}</span>` : ''}<br><span class="muted small">${esc(o.description)}</span></td>
+            <td class="small">${O.euro(o.prix)} ${o.unite === 'mois' ? '/ mois' : o.unite === 'séance' ? '/ séance' : 'une fois'}</td>
+            <td class="num">${o.unite === 'mois' ? '—' : `<input type="number" class="qty" min="1" step="1" inputmode="numeric" data-q="${esc(o.id)}" value="${esc(ch ? ch.quantite : o.quantiteDefaut || 1)}">`}</td>
+            <td class="num" data-sub="${esc(o.id)}"></td></tr>`; }).join('')}
+          </tbody></table>
+        </section>
+        <section class="card"><h2>Conditions</h2><div class="form"><div class="f-row">
+          <label>Remise (%)<input type="number" min="0" max="100" step="1" id="o-remise" value="${esc(sel.remise || 0)}"></label>
+          <label>Statut<select id="o-statut">${['proposée', 'acceptée', 'refusée'].map(x => `<option ${x === sel.statut ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+          <label>Début<input type="date" id="o-debut" value="${esc(sel.dateDebut || '')}"></label></div>
+          <label>Notes<textarea id="o-notes" rows="2">${esc(sel.notes || '')}</textarea></label></div>
+        </section>
+      </div>
+      <aside class="card totals" id="offre-totals"></aside></div>
+      <div class="sticky-actions no-print">${s.offre ? '<button type="button" class="btn danger ghost" id="o-reset">Effacer la formule enregistrée</button>' : ''}<button type="button" class="btn gold" id="o-save">Enregistrer la formule</button></div>`;
+
+    const read = () => {
+      const f = el.querySelector('input[name=forfait]:checked');
+      sel.forfaitId = f ? f.value : null;
+      sel.options = [...el.querySelectorAll('[data-opt]:checked')].map(i => {
+        const q = el.querySelector(`[data-q="${i.dataset.opt}"]`);
+        return { id: i.dataset.opt, quantite: q ? Math.max(1, Number(q.value) || 1) : 1 };
+      });
+      sel.remise = Math.min(100, Math.max(0, Number(el.querySelector('#o-remise').value) || 0));
+      sel.statut = el.querySelector('#o-statut').value;
+      sel.dateDebut = el.querySelector('#o-debut').value;
+      sel.notes = el.querySelector('#o-notes').value.trim();
+    };
+    const update = () => {
+      read();
+      const r = O.compute(sel);
+      el.querySelectorAll('.forfait').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+      el.querySelectorAll('.opt-table tbody tr').forEach(tr => tr.classList.toggle('on', tr.querySelector('[data-opt]').checked));
+      el.querySelectorAll('[data-sub]').forEach(td => {
+        const l = r.lignes.find(x => x.id === td.dataset.sub);
+        td.innerHTML = l ? `<b>${O.euro(l.mensuel || l.unique)}</b>${l.unique ? '<br><span class="muted small">une fois</span>' : ''}` : '<span class="muted">—</span>';
+      });
+      const comp = [{ label: 'Forfait ' + (r.forfait ? r.forfait.nom : ''), value: r.forfaitMensuel, display: O.euro(r.forfaitMensuel), color: '#10214c' }]
+        .concat(r.lignes.filter(l => l.mensuel).map(l => ({ label: l.nom, value: l.mensuel, display: O.euro(l.mensuel), color: '#b8892f' })));
+      el.querySelector('#offre-totals').innerHTML = `<h2>Coût total</h2>
+        <dl class="tot">
+          <dt>Forfait ${esc(r.forfait ? r.forfait.nom : '—')}</dt><dd>${O.euro(r.forfaitMensuel)}</dd>
+          <dt>Options mensuelles</dt><dd>${O.euro(r.optMensuel)}</dd>
+          ${r.remise ? `<dt>Remise ${sel.remise} %</dt><dd>−${O.euro(r.remise)}</dd>` : ''}
+          <dt class="strong">Total mensuel</dt><dd class="big">${O.euro(r.mensuel)}</dd>
+          <dt>Frais de mise en place</dt><dd>${O.euro(r.fraisMiseEnPlace)}</dd>
+          ${r.unique - r.fraisMiseEnPlace ? `<dt>Options ponctuelles</dt><dd>${O.euro(r.unique - r.fraisMiseEnPlace)}</dd>` : ''}
+          <dt class="strong">Coût total 1<sup>re</sup> année</dt><dd class="big gold">${O.euro(r.premiereAnnee)}</dd>
+          ${r.credit ? `<dt>Crédit d'impôt estimé (${c.creditImpot} %)</dt><dd>−${O.euro(r.credit)}</dd><dt class="strong">Reste à charge 1<sup>re</sup> année</dt><dd class="big">${O.euro(r.net)}</dd>` : ''}
+        </dl>
+        <h3>Composition du coût mensuel</h3>${Ch.bars(comp)}
+        <p class="muted small">${esc(c.mention || '')}</p>`;
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+    update();
+    const ar = el.querySelector('#apply-rec');
+    if (ar) ar.onclick = () => tabOffre(s, el, { forfaitId: rec.forfait.id, options: rec.options.map(o => ({ id: o.option.id, quantite: Number(o.option.quantiteDefaut) || 1 })), remise: sel.remise, statut: sel.statut, dateDebut: sel.dateDebut, notes: sel.notes, source: 'recommandee' });
+    el.querySelector('#o-save').onclick = () => {
+      read();
+      if (!sel.forfaitId) return toast('Choisissez un forfait');
+      s.offre = { forfaitId: sel.forfaitId, options: sel.options, remise: sel.remise, statut: sel.statut, dateDebut: sel.dateDebut, notes: sel.notes, majLe: today() };
+      S.upsert('seniors', s); toast('Formule enregistrée — elle figurera dans chaque mail aux aidants'); render();
+    };
+    const rs = el.querySelector('#o-reset');
+    if (rs) rs.onclick = () => confirmBox('Effacer la formule enregistrée ? Les mails reprendront la recommandation automatique.', () => { delete s.offre; S.upsert('seniors', s); render(); }, 'Effacer');
   }
 
   // ---------- Comptes rendus ----------
@@ -1253,11 +1376,31 @@
         <div class="btn-row"><button class="btn gold" id="exp">⇩ Exporter une sauvegarde</button>
           <label class="btn ghost">⇧ Restaurer une sauvegarde<input type="file" accept=".json" hidden id="restore"></label>
           ${S.state.seniors.length ? `<select id="exp-s">${seniorOptions()}</select><button class="btn ghost" id="exp-one">Exporter ce dossier (transmission)</button>` : ''}</div></section>
+      <section class="card span-2"><h2>Forfaits & tarifs</h2><form class="form" id="fo">
+        <p class="muted small">Le niveau (1 = besoin léger, 2 = modéré, 3 = important) sert à recommander le forfait. Une option est conseillée quand le score du domaine lié est inférieur ou égal au seuil.</p>
+        <h3>Forfaits</h3>${rowsEditor('forfaits', [{ k: 'nom', label: 'Forfait', w: 1.3 }, { k: 'niveau', label: 'Niveau', type: 'select', options: ['1', '2', '3'], w: .7 }, { k: 'prix', label: '€ / mois', type: 'number', w: .8 }, { k: 'description', label: 'Ce qui est inclus', w: 3.5 }], S.state.offre.forfaits)}
+        <h3>Options</h3>${rowsEditor('options', [{ k: 'nom', label: 'Option', w: 2 }, { k: 'prix', label: 'Prix €', type: 'number', w: .7 }, { k: 'unite', label: 'Unité', type: 'select', options: [{ v: 'mois', l: 'par mois' }, { v: 'séance', l: 'par séance' }, { v: 'unique', l: 'une fois' }], w: .9 }, { k: 'quantiteDefaut', label: 'Qté', type: 'number', w: .5 }, { k: 'domaine', label: 'Domaine lié', type: 'select', options: [{ v: '', l: '—' }, ...S.DOMAINES.map(d => ({ v: d.key, l: d.court }))], w: 1 }, { k: 'seuil', label: 'Seuil', type: 'number', w: .5 }, { k: 'description', label: 'Description', w: 2.2 }], S.state.offre.options)}
+        <div class="f-row"><label>Frais de mise en place (€)<input name="fraisMiseEnPlace" type="number" inputmode="decimal" value="${esc(S.state.offre.fraisMiseEnPlace)}"></label>
+          <label>Crédit d'impôt estimé (%)<input name="creditImpot" type="number" min="0" max="100" value="${esc(S.state.offre.creditImpot)}"></label>
+          <label class="grow">Mention tarifaire<input name="mention" value="${esc(S.state.offre.mention)}"></label></div>
+        <div class="btn-row"><button class="btn gold">Enregistrer la grille</button><button type="button" class="btn ghost" id="o-default">Rétablir la grille d'exemple</button></div>
+      </form></section>
       <section class="card"><h2>Démonstration & réinitialisation</h2>
         <div class="btn-row"><button class="btn ghost" data-act="demo">Charger un dossier de démonstration</button><button class="btn danger ghost" id="wipe">Effacer toutes les données</button></div></section>
       </div>${installCard()}
       <p class="muted small center">Le Cercle · Up&amp;In — Family Office de l'Autonomie · version 1.0</p>`;
     document.getElementById('fc').onsubmit = (e) => { e.preventDefault(); Object.assign(S.state.cabinet, formData(e.target)); S.save(); toast('Coordonnées enregistrées'); };
+    document.getElementById('fo').onsubmit = (e) => {
+      e.preventDefault();
+      const d = formData(e.target);
+      Object.assign(S.state.offre, {
+        forfaits: collectRows(e.target, 'forfaits').map(f => Object.assign(f, { niveau: Number(f.niveau) || 1, prix: Number(f.prix) || 0 })),
+        options: collectRows(e.target, 'options').map(o => Object.assign(o, { prix: Number(o.prix) || 0, quantiteDefaut: Number(o.quantiteDefaut) || 1, seuil: o.seuil === '' ? 5 : Number(o.seuil) })),
+        fraisMiseEnPlace: Number(d.fraisMiseEnPlace) || 0, creditImpot: Number(d.creditImpot) || 0, mention: d.mention
+      });
+      S.save(); toast('Grille tarifaire enregistrée');
+    };
+    document.getElementById('o-default').onclick = () => confirmBox("Remplacer votre grille par la grille d'exemple ?", () => { S.state.offre = window.Offre.defaultCatalogue(); S.save(); render(); }, 'Remplacer');
     document.getElementById('fpin').onsubmit = async (e) => {
       e.preventDefault(); const p = e.target.pin.value;
       if (!/^\d{4,8}$/.test(p)) return toast('Le code doit comporter 4 à 8 chiffres');

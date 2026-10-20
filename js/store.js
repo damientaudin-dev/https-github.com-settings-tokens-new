@@ -48,6 +48,7 @@
       version: 1,
       cabinet: { conseiller: '', email: '', tel: '', signature: "L'équipe Up&In — Family Office de l'Autonomie" },
       securite: { pinHash: null },
+      offre: window.Offre.defaultCatalogue(),
       seniors: [],
       bilans: [],
       comptesRendus: [],
