@@ -3,6 +3,7 @@
 **Le Cercle** est le logiciel de coordination d'Up&In. Il réunit, pour chaque senior accompagné :
 
 - le **bilan partagé** (10 domaines notés de 0 à 10, GIR, synthèse, besoins, recommandations) avec **radar**, **évolution dans le temps**, **tableaux** (plan d'action, aides et financements, budget) et **schéma du cercle d'accompagnement** ;
+- les **intervenants** de chaque senior, à domicile ou en résidence, regroupés par famille : médical, paramédical, services à la personne (ménage, repassage, aide à domicile, courses, portage de repas, garde de nuit…), bien-être et social. Pour chacun : qui intervient, ses coordonnées, le lieu, la fréquence, les jours, l'heure, la durée et des notes libres. Les passages réguliers s'inscrivent automatiquement dans le calendrier du senior, 12 semaines à l'avance, et ce planning se prolonge à chaque ouverture ;
 - les **comptes rendus des intervenants**, soignants et non soignants (saisie, message collé, import CSV/JSON, photos et PDF joints), avec le suivi des indicateurs (poids, tension, douleur…) ;
 - le **calendrier des interventions** (prévue, réalisée, reportée, annulée), avec un **court compte rendu** à transmettre aux aidants ;
 - une **version du calendrier pour le senior** en gros caractères, imprimable : date, heure, intervention, **avec qui** et **pourquoi** ;

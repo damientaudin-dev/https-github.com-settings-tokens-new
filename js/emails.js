@@ -129,6 +129,23 @@
         };
       }
     },
+    'aidants-intervenants': {
+      cible: 'aidants', label: 'Organisation des intervenants (qui, quand, fréquence)',
+      build(s) {
+        const groups = Object.entries(S().METIERS).map(([g, m]) => {
+          const l = (s.intervenants || []).filter(p => S().groupeOf(p) === g);
+          return l.length ? [m.label.toUpperCase(), ...l.map(p => `• ${p.role} — ${p.nom}${p.structure && p.structure !== p.nom ? ' (' + p.structure + ')' : ''}${p.frequence ? '\n   ' + S().resumePlanning(p) : ''}${p.lieu ? ' · ' + p.lieu : ''}${p.tel ? '\n   Tél. ' + p.tel : ''}`), ''] : [];
+        }).flat();
+        return {
+          subject: `Qui intervient auprès de ${S().seniorName(s.id, true)}`,
+          body: [`Bonjour ${aidantsPrenoms(s)},`, '',
+            `Voici l'organisation actuelle des intervenants auprès de ${S().seniorName(s.id, true)}${s.lieuVie === 'residence' && s.residence ? ' (' + s.residence + ')' : ''} :`, '',
+            ...(groups.length ? groups : ['Aucun intervenant renseigné pour le moment.', '']),
+            'PROCHAINS PASSAGES (7 JOURS)', ...planningLines(upcoming(s, 7), false), '',
+            "N'hésitez pas à nous signaler tout changement.", signature()].join('\n')
+        };
+      }
+    },
     'aidants-planning': {
       cible: 'aidants', label: 'Planning des 14 prochains jours',
       build(s) {

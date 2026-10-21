@@ -3,6 +3,7 @@
   'use strict';
 
   const S = window.Store, Ch = window.Charts, M = window.Emails;
+  const APP_VERSION = '1.2';
   const main = document.getElementById('main');
   const modalRoot = document.getElementById('modal-root');
 
@@ -194,6 +195,7 @@
       confirmBox(`Supprimer définitivement le dossier de ${s.prenom} ${s.nom} et toutes ses données (bilans, comptes rendus, calendrier) ?`, () => { S.removeSenior(s.id); toast('Dossier supprimé'); go('#/seniors'); });
     },
     'person'(a) { personModal(a.dataset.senior, a.dataset.kind, a.dataset.id); },
+    'add-iv'(a) { intervenantModal(a.dataset.senior, null, { role: a.dataset.role, groupe: a.dataset.groupe }); },
     'new-int'(a) { interventionModal(null, { seniorId: a.dataset.senior, date: a.dataset.date }); },
     'edit-int'(a) { interventionModal(S.state.interventions.find(i => i.id === a.dataset.id)); },
     'quick-done'(a) { quickDone(a.dataset.id); },
@@ -362,6 +364,8 @@
           <label class="grow">Prénom<input name="prenom" required value="${esc(s.prenom)}"></label>
           <label class="grow">Nom<input name="nom" required value="${esc(s.nom)}"></label>
           <label>Date de naissance<input type="date" name="naissance" value="${esc(s.naissance)}"></label></div>
+        <div class="f-row"><label>Lieu de vie<select name="lieuVie"><option value="domicile" ${s.lieuVie !== 'residence' ? 'selected' : ''}>À domicile</option><option value="residence" ${s.lieuVie === 'residence' ? 'selected' : ''}>En résidence</option></select></label>
+          <label class="grow">Nom de la résidence<input name="residence" value="${esc(s.residence)}" placeholder="Résidence services, résidence autonomie, EHPAD…"></label></div>
         <label>Adresse<input name="adresse" value="${esc(s.adresse)}"></label>
         <div class="f-row"><label class="grow">Téléphone<input name="tel" type="tel" value="${esc(s.tel)}"></label>
           <label class="grow">E-mail<input name="email" type="email" value="${esc(s.email)}"></label>
@@ -378,9 +382,9 @@
           const f = m.querySelector('form');
           if (!f.reportValidity()) return;
           const d = formData(f);
-          const out = Object.assign({}, s, { civilite: d.civilite, prenom: d.prenom, nom: d.nom, naissance: d.naissance, adresse: d.adresse, tel: d.tel, email: d.email, medecin: d.medecin, situation: d.situation, notes: d.notes });
+          const out = Object.assign({}, s, { civilite: d.civilite, prenom: d.prenom, nom: d.nom, naissance: d.naissance, adresse: d.adresse, tel: d.tel, email: d.email, medecin: d.medecin, lieuVie: d.lieuVie, residence: d.residence, situation: d.situation, notes: d.notes });
           if (isNew && (d.a_prenom || d.a_nom)) out.aidants = [{ id: S.uid(), prenom: d.a_prenom, nom: d.a_nom, lien: d.a_lien, email: d.a_email, tel: d.a_tel, principal: true }];
-          if (isNew && d.medecin) out.intervenants = [{ id: S.uid(), nom: d.medecin, role: 'Médecin traitant', categorie: 'soignant', structure: '', tel: '', email: '' }];
+          if (isNew && d.medecin) out.intervenants = [{ id: S.uid(), nom: d.medecin, role: 'Médecin traitant', groupe: 'medical', categorie: 'soignant', structure: '', tel: '', email: '', frequence: 'demande', lieu: 'Cabinet' }];
           S.upsert('seniors', out);
           close(); toast('Dossier enregistré');
           go('#/senior/' + out.id);
@@ -390,6 +394,7 @@
   }
 
   function personModal(seniorId, kind, id) {
+    if (kind !== 'aidant') return intervenantModal(seniorId, id);
     const s = S.senior(seniorId);
     const list = kind === 'aidant' ? s.aidants : s.intervenants;
     const p = list.find(x => x.id === id) || { categorie: kind === 'aidant' ? 'aidant' : 'soignant' };
@@ -429,7 +434,7 @@
     const s = S.senior(parts[1]);
     if (!s) { main.innerHTML = emptyState('Dossier introuvable.', '<a class="btn" href="#/seniors">Retour</a>'); return; }
     const tab = parts[2] || 'synthese';
-    const tabs = [['synthese', 'Synthèse'], ['bilan', 'Bilan partagé'], ['cercle', 'Le Cercle'], ['offre', 'Forfait & coût'], ['cr', 'Comptes rendus'], ['calendrier', 'Calendrier'], ['mails', 'Mails']];
+    const tabs = [['synthese', 'Synthèse'], ['bilan', 'Bilan partagé'], ['intervenants', 'Intervenants'], ['cercle', 'Le Cercle'], ['offre', 'Forfait & coût'], ['cr', 'Comptes rendus'], ['calendrier', 'Calendrier'], ['mails', 'Mails']];
     const b = S.lastBilan(s.id);
     main.innerHTML = `<header class="senior-head">
         <span class="avatar lg">${esc(initials(s))}</span>
@@ -440,7 +445,7 @@
       <nav class="tabs no-print">${tabs.map(([k, l]) => `<a href="#/senior/${s.id}/${k}" class="${k === tab ? 'active' : ''}">${l}</a>`).join('')}</nav>
       <div id="tab"></div>`;
     const el = document.getElementById('tab');
-    ({ synthese: tabSynthese, bilan: tabBilan, cercle: tabCercle, offre: tabOffre, cr: tabCR, calendrier: tabCalendar, mails: tabMails }[tab] || tabSynthese)(s, el);
+    ({ synthese: tabSynthese, bilan: tabBilan, intervenants: tabIntervenants, cercle: tabCercle, offre: tabOffre, cr: tabCR, calendrier: tabCalendar, mails: tabMails }[tab] || tabSynthese)(s, el);
   }
 
   function tabSynthese(s, el) {
@@ -463,7 +468,9 @@
         <div class="btn-row"><button class="btn sm ghost" data-act="new-int" data-senior="${s.id}">+ Intervention</button><a class="btn sm ghost" href="#/mon-calendrier/${s.id}">Calendrier du senior</a></div>
       </section>
       <section class="card"><h2>Situation</h2>
-        <dl class="dl"><dt>Situation de vie</dt><dd>${nl2br(s.situation) || '—'}</dd>
+        <dl class="dl"><dt>Lieu de vie</dt><dd>${s.lieuVie === 'residence' ? 'En résidence' + (s.residence ? ' — ' + esc(s.residence) : '') : 'À domicile'}</dd>
+        <dt>Situation de vie</dt><dd>${nl2br(s.situation) || '—'}</dd>
+        <dt>Intervenants réguliers</dt><dd>${(s.intervenants || []).filter(p => p.frequence && p.frequence !== 'demande').map(p => `<b>${esc(p.role)}</b> — ${esc(p.nom)} : ${esc(S.resumePlanning(p))}`).join('<br>') || '—'} <a href="#/senior/${s.id}/intervenants" class="small">Gérer</a></dd>
         <dt>Préférences</dt><dd>${nl2br(s.notes) || '—'}</dd>
         <dt>Formule Up&amp;In</dt><dd>${formuleLine(s)}</dd>
         <dt>Contact</dt><dd>${esc([s.tel, s.email].filter(Boolean).join(' · ')) || '—'}</dd>
@@ -604,6 +611,100 @@
     if (del) del.onclick = () => confirmBox('Supprimer ce bilan partagé ?', () => { S.remove('bilans', b.id); go(`#/senior/${s.id}/bilan`); });
   }
 
+  // ---------- Intervenants (médical, paramédical, services à la personne…) ----------
+  function tabIntervenants(s, el) {
+    const list = s.intervenants || [];
+    const card = (p) => {
+      const nb = S.state.interventions.filter(i => i.sourceId === p.id && i.statut === 'prevue' && i.date >= today()).length;
+      return `<button class="iv-card" data-act="person" data-senior="${s.id}" data-kind="intervenant" data-id="${p.id}">
+        <span class="iv-role">${esc(p.role || 'Intervenant')}</span>
+        <b class="iv-name">${esc(p.nom || '—')}</b>${p.structure && p.structure !== p.nom ? `<span class="muted small">${esc(p.structure)}</span>` : ''}
+        ${p.frequence ? `<span class="iv-plan">${esc(S.resumePlanning(p))}</span>` : '<span class="muted small">Fréquence non renseignée</span>'}
+        <span class="iv-meta">${p.lieu ? `<span class="chip st-prevue">${esc(p.lieu)}</span>` : ''}${p.planifier && p.frequence !== 'demande' ? `<span class="chip st-faite">▦ Au calendrier · ${nb} à venir</span>` : ''}</span>
+        ${p.tel || p.email ? `<span class="muted small">${esc([p.tel, p.email].filter(Boolean).join(' · '))}</span>` : ''}
+        ${p.notes ? `<span class="iv-notes">${esc(p.notes)}</span>` : ''}
+      </button>`;
+    };
+    el.innerHTML = `<div class="toolbar no-print"><p class="muted small grow-txt">Notez qui intervient, où, quand et à quelle fréquence. Les passages réguliers s'inscrivent automatiquement dans le calendrier du senior, 12 semaines à l'avance.</p>
+        <a class="btn ghost sm" href="#/mon-calendrier/${s.id}">◱ Calendrier du senior</a>
+        <a class="btn gold sm" href="#/mails?senior=${s.id}&tpl=aidants-intervenants">✉ Envoyer l'organisation aux aidants</a></div>
+      ${Object.entries(S.METIERS).map(([g, m]) => {
+        const mine = list.filter(p => S.groupeOf(p) === g);
+        const used = new Set(mine.map(p => p.role));
+        return `<section class="card"><h2>${esc(m.label)}${g === 'sap' ? ' <small>à domicile ou en résidence</small>' : ''}</h2>
+          ${mine.length ? `<div class="iv-grid">${mine.map(card).join('')}</div>` : ''}
+          <div class="iv-add"><span class="muted small">Ajouter :</span>${m.roles.filter(r => !used.has(r)).map(r => `<button class="add-chip" data-act="add-iv" data-senior="${s.id}" data-groupe="${g}" data-role="${esc(r)}">+ ${esc(r)}</button>`).join('')}
+            <button class="add-chip other" data-act="add-iv" data-senior="${s.id}" data-groupe="${g}" data-role="">+ Autre…</button></div>
+        </section>`;
+      }).join('')}`;
+  }
+
+  function intervenantModal(seniorId, id, preset) {
+    const s = S.senior(seniorId);
+    s.intervenants = s.intervenants || [];
+    const existing = s.intervenants.find(x => x.id === id);
+    const p = existing ? JSON.parse(JSON.stringify(existing)) : Object.assign({ jours: [], planifier: true, lieu: s.lieuVie === 'residence' ? 'Résidence' : 'Domicile' }, preset || {});
+    p.groupe = S.groupeOf(p);
+    const lieux = ['Domicile', 'Résidence', 'Cabinet', 'Établissement', 'Visio / téléphone'];
+    openModal({
+      title: (existing ? '' : 'Ajouter — ') + (p.role || 'Intervenant'), wide: true,
+      body: `<form class="form">
+        <div class="f-row">
+          <label class="grow">Famille<select name="groupe">${Object.entries(S.METIERS).map(([k, m]) => `<option value="${k}" ${k === p.groupe ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
+          <label class="grow">Métier / service<input name="role" list="iv-roles" required value="${esc(p.role)}" placeholder="Ex. : Ménage, Kinésithérapeute…"><datalist id="iv-roles">${[...S.ROLES_SOIGNANTS, ...S.ROLES_NON_SOIGNANTS].map(r => `<option value="${esc(r)}">`).join('')}</datalist></label></div>
+        <div class="f-row">
+          <label class="grow">Qui intervient (nom)<input name="nom" value="${esc(p.nom)}" placeholder="Nom de la personne"></label>
+          <label class="grow">Structure / entreprise<input name="structure" value="${esc(p.structure)}" placeholder="Cabinet, société de services…"></label></div>
+        <div class="f-row"><label class="grow">Téléphone<input type="tel" name="tel" value="${esc(p.tel)}"></label><label class="grow">E-mail<input type="email" name="email" value="${esc(p.email)}"></label></div>
+
+        <h3>Quand et à quelle fréquence</h3>
+        <div class="f-row">
+          <label class="grow">Fréquence<select name="frequence" id="iv-freq"><option value="">— Non renseignée —</option>${Object.entries(S.FREQUENCES).map(([k, v]) => `<option value="${k}" ${k === p.frequence ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>Heure<input type="time" name="heure" value="${esc(p.heure)}"></label>
+          <label>Durée (min)<input name="duree" inputmode="numeric" value="${esc(p.duree)}" size="5"></label>
+          <label class="grow">Lieu<input name="lieu" list="iv-lieux" value="${esc(p.lieu)}"><datalist id="iv-lieux">${lieux.map(l => `<option value="${l}">`).join('')}</datalist></label></div>
+        <div class="jours" id="iv-jours"><span class="lbl">Jours :</span>${S.JOURS.map((j, i) => `<label class="jour"><input type="checkbox" value="${i}" ${(p.jours || []).map(Number).includes(i) ? 'checked' : ''}><span>${j}</span></label>`).join('')}</div>
+        <div class="f-row">
+          <label>À partir du<input type="date" name="debut" value="${esc(p.debut)}"></label>
+          <label>Jusqu'au (facultatif)<input type="date" name="fin" value="${esc(p.fin)}"></label>
+          <label class="grow">Intitulé dans le calendrier<input name="prestation" value="${esc(p.prestation)}" placeholder="${esc(p.role || 'Ex. : Ménage')}"></label></div>
+        <label>Pourquoi (expliqué simplement au senior)<input name="motif" value="${esc(p.motif)}" placeholder="Ex. : entretien du logement, rééducation…"></label>
+        <label class="check"><input type="checkbox" name="planifier" ${p.planifier ? 'checked' : ''}> Inscrire ces passages dans le calendrier du senior</label>
+
+        <h3>Notes libres</h3>
+        <label><textarea name="notes" rows="3" placeholder="Code d'accès, clés, consignes, remplaçant, tarif, prise en charge APA…">${esc(p.notes)}</textarea></label>
+      </form>`,
+      footer: `${existing ? '<button class="btn danger ghost left" id="iv-del">Retirer</button>' : ''}<button class="btn ghost" data-close>Annuler</button><button class="btn gold" id="iv-save">Enregistrer</button>`,
+      onMount(m, close) {
+        const freq = m.querySelector('#iv-freq'), jours = m.querySelector('#iv-jours');
+        const sync = () => { jours.hidden = !['hebdo', 'quinzaine'].includes(freq.value); };
+        freq.onchange = sync; sync();
+        m.querySelector('#iv-save').onclick = () => {
+          const f = m.querySelector('form'); if (!f.reportValidity()) return;
+          const d = formData(f);
+          const out = Object.assign(existing || { id: S.uid() }, d, {
+            jours: [...jours.querySelectorAll('input:checked')].map(i => Number(i.value)),
+            duree: d.duree ? Number(d.duree) : '', categorie: S.METIERS[d.groupe].categorie
+          });
+          if (!out.nom) out.nom = out.structure || out.role;
+          if (['hebdo', 'quinzaine'].includes(out.frequence) && !out.jours.length && out.planifier) return toast('Cochez au moins un jour de passage');
+          if (out.planifier && out.frequence === 'ponctuel' && !out.debut) return toast("Indiquez la date de l'intervention");
+          if (!existing) s.intervenants.push(out);
+          const n = S.planifier(s, out);
+          S.upsert('seniors', s); close();
+          toast(out.planifier && n ? `${n} passage(s) inscrit(s) au calendrier` : 'Intervenant enregistré');
+          render();
+        };
+        const del = m.querySelector('#iv-del');
+        if (del) del.onclick = () => confirmBox(`Retirer ${existing.nom} (${existing.role}) ? Ses passages à venir seront retirés du calendrier.`, () => {
+          existing.planifier = false; S.planifier(s, existing);
+          s.intervenants = s.intervenants.filter(x => x.id !== existing.id);
+          S.upsert('seniors', s); close(); render();
+        }, 'Retirer');
+      }
+    });
+  }
+
   // ---------- Le Cercle ----------
   function tabCercle(s, el) {
     const people = (list, kind) => list.map(p => `<li><button class="person" data-act="person" data-senior="${s.id}" data-kind="${kind}" data-id="${p.id}">
@@ -617,9 +718,9 @@
         <section class="card"><h2>Aidants</h2><ul class="people">${people(s.aidants || [], 'aidant') || '<li class="muted">Aucun aidant.</li>'}</ul>
           <button class="btn sm ghost" data-act="person" data-senior="${s.id}" data-kind="aidant">+ Aidant</button></section>
         <section class="card"><h2>Intervenants soignants</h2><ul class="people">${people((s.intervenants || []).filter(i => i.categorie === 'soignant'), 'intervenant') || '<li class="muted">Aucun.</li>'}</ul>
-          <button class="btn sm ghost" data-act="person" data-senior="${s.id}" data-kind="intervenant">+ Intervenant</button></section>
+          <a class="btn sm ghost" href="#/senior/${s.id}/intervenants">+ Intervenant</a></section>
         <section class="card"><h2>Intervenants non soignants</h2><ul class="people">${people((s.intervenants || []).filter(i => i.categorie !== 'soignant'), 'intervenant') || '<li class="muted">Aucun.</li>'}</ul>
-          <button class="btn sm ghost" data-act="person" data-senior="${s.id}" data-kind="intervenant">+ Intervenant</button></section>
+          <a class="btn sm ghost" href="#/senior/${s.id}/intervenants">+ Intervenant</a></section>
       </div></div>`;
   }
 
@@ -947,6 +1048,7 @@
         const save = (transmit) => {
           const f = m.querySelector('form'); if (!f.reportValidity()) return;
           const d = formData(f);
+          if (it.sourceId) it.modifie = true;
           const base = Object.assign(it, { seniorId: d.seniorId, date: d.date, heure: d.heure, duree: Number(d.duree) || '', type: d.type, lieu: d.lieu, intervenant: d.intervenant, role: d.role, categorie: d.categorie, motif: d.motif, statut: d.statut, cr: d.cr });
           S.upsert('interventions', base);
           const reps = Number(d.repeat || 0);
@@ -1074,6 +1176,9 @@
           <p><span class="sc-lbl">Pourquoi :</span> ${esc(i.motif || '—')}</p>
           ${i.lieu ? `<p><span class="sc-lbl">Où :</span> ${esc(i.lieu)}</p>` : ''}</div></div>`).join('')}</section>`).join('')
         : '<p class="sc-none">Aucun rendez-vous prévu sur cette période.</p>'}
+      ${(() => { const reg = (s.intervenants || []).filter(p => p.frequence && !['demande', 'ponctuel'].includes(p.frequence) && (!p.fin || p.fin >= t)); return reg.length ? `<section class="sc-day sc-reg"><h2>Qui vient me voir régulièrement</h2>
+        ${reg.map(p => `<div class="sc-item"><div class="sc-time">${esc(p.role)}</div><div class="sc-desc"><p class="sc-what">${esc(p.nom)}${p.structure && p.structure !== p.nom ? ` <span class="sc-role">(${esc(p.structure)})</span>` : ''}</p>
+          <p><span class="sc-lbl">Quand :</span> ${esc(S.resumePlanning(p))}</p>${p.motif ? `<p><span class="sc-lbl">Pourquoi :</span> ${esc(p.motif)}</p>` : ''}${p.tel ? `<p><span class="sc-lbl">Téléphone :</span> ${esc(p.tel)}</p>` : ''}</div></div>`).join('')}</section>` : ''; })()}
       <footer class="sc-foot">Une question ? Appelez Up&amp;In${S.state.cabinet.tel ? ' au <b>' + esc(S.state.cabinet.tel) + '</b>' : ''}${(s.aidants || []).find(a => a.principal) ? ` ou ${esc(s.aidants.find(a => a.principal).prenom)}${s.aidants.find(a => a.principal).tel ? ' au <b>' + esc(s.aidants.find(a => a.principal).tel) + '</b>' : ''}` : ''}.</footer>
     </div>`;
   }
@@ -1388,7 +1493,14 @@
       <section class="card"><h2>Démonstration & réinitialisation</h2>
         <div class="btn-row"><button class="btn ghost" data-act="demo">Charger un dossier de démonstration</button><button class="btn danger ghost" id="wipe">Effacer toutes les données</button></div></section>
       </div>${installCard()}
-      <p class="muted small center">Le Cercle · Up&amp;In — Family Office de l'Autonomie · version 1.0</p>`;
+      <section class="card"><h2>Mise à jour</h2><p class="muted">Version ${APP_VERSION}. Le Cercle se met à jour automatiquement à l'ouverture lorsque l'appareil est connecté.</p>
+        <button class="btn ghost" id="upd">Rechercher une mise à jour</button></section>
+      <p class="muted small center">Le Cercle · Up&amp;In — Family Office de l'Autonomie · version ${APP_VERSION}</p>`;
+    document.getElementById('upd').onclick = async () => {
+      toast('Recherche de mise à jour…');
+      try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch (e) { /* hors ligne */ }
+      setTimeout(() => location.reload(), 800);
+    };
     document.getElementById('fc').onsubmit = (e) => { e.preventDefault(); Object.assign(S.state.cabinet, formData(e.target)); S.save(); toast('Coordonnées enregistrées'); };
     document.getElementById('fo').onsubmit = (e) => {
       e.preventDefault();
@@ -1467,10 +1579,18 @@
   // ======================================================================
   window.addEventListener('hashchange', render);
   S.load().then(() => {
+    S.planifierTout();
     lock();
     render();
   });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* hors ligne indisponible */ });
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloading) { reloading = true; S.flush().then(() => location.reload()); }
+    });
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => { /* hors ligne indisponible */ });
   }
 })();

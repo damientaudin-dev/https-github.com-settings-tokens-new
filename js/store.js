@@ -36,8 +36,43 @@
     annulee: { label: 'Annulée', cls: 'st-annulee', icon: '✕' }
   };
 
-  const ROLES_SOIGNANTS = ['Médecin traitant', 'Infirmier(ère)', 'Kinésithérapeute', 'Ergothérapeute', 'Orthophoniste', 'Psychologue', 'Gériatre', 'Pharmacien', 'Podologue', 'Aide-soignant(e)', 'Diététicien(ne)', 'Spécialiste'];
-  const ROLES_NON_SOIGNANTS = ['Aide à domicile', 'Auxiliaire de vie', 'Portage de repas', 'Assistante sociale', 'Notaire', 'Conseiller patrimonial', 'Mandataire / tuteur', 'Artisan / adaptation logement', 'Téléassistance', 'Transport accompagné', 'Animateur / bénévole', 'Coiffeur / esthétique', 'Coordinateur Up&In'];
+  // Métiers des intervenants, par famille (à domicile ou en résidence)
+  const METIERS = {
+    medical: {
+      label: 'Médical', categorie: 'soignant',
+      roles: ['Médecin traitant', 'Gériatre', 'Cardiologue', 'Neurologue', 'Ophtalmologue', 'Dentiste', 'Dermatologue', 'Rhumatologue', 'Psychiatre', 'Autre spécialiste']
+    },
+    paramedical: {
+      label: 'Paramédical', categorie: 'soignant',
+      roles: ['Infirmier(ère)', 'Kinésithérapeute', 'Ergothérapeute', 'Orthophoniste', 'Psychologue', 'Psychomotricien(ne)', 'Diététicien(ne)', 'Podologue / pédicure', 'Orthoptiste', 'Aide-soignant(e)', 'SSIAD / HAD', 'Pharmacien', 'Laboratoire / prises de sang', 'Audioprothésiste', 'Opticien', 'Matériel médical', 'Activité physique adaptée']
+    },
+    sap: {
+      label: 'Services à la personne', categorie: 'non-soignant',
+      roles: ['Ménage', 'Repassage', 'Aide à domicile', 'Auxiliaire de vie', 'Aide au lever / coucher', 'Aide à la toilette', 'Préparation des repas', 'Portage de repas', 'Courses', 'Garde de jour', 'Garde de nuit', 'Accompagnement / transport', 'Promenade / compagnie', 'Jardinage', 'Petit bricolage', 'Assistance informatique', 'Assistance administrative', 'Soins aux animaux', 'Téléassistance']
+    },
+    autres: {
+      label: 'Bien-être, social & autres', categorie: 'non-soignant',
+      roles: ['Coiffeur', 'Esthéticienne', 'Assistante sociale', 'Mandataire / tuteur', 'Notaire', 'Conseiller patrimonial', 'Animateur / bénévole', 'Artisan / adaptation logement', 'Coordinateur Up&In']
+    }
+  };
+  const groupeOf = (p) => {
+    if (p.groupe && METIERS[p.groupe]) return p.groupe;
+    const g = Object.keys(METIERS).find(k => METIERS[k].roles.includes(p.role));
+    return g || (p.categorie === 'soignant' ? 'paramedical' : 'sap');
+  };
+  const ROLES_SOIGNANTS = [...METIERS.medical.roles, ...METIERS.paramedical.roles];
+  const ROLES_NON_SOIGNANTS = [...METIERS.sap.roles, ...METIERS.autres.roles];
+
+  const FREQUENCES = {
+    hebdo: 'Chaque semaine', quinzaine: 'Une semaine sur deux', quotidien: 'Tous les jours',
+    mensuel: 'Une fois par mois', ponctuel: 'Une seule fois', demande: 'À la demande'
+  };
+  const JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  const HORIZON = 84; // jours de planning généré à l'avance
+
+  const isoLocal = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const addDays = (iso, n) => { const x = new Date(iso + 'T12:00:00'); x.setDate(x.getDate() + n); return isoLocal(x); };
+  const dow = (iso) => (new Date(iso + 'T12:00:00').getDay() + 6) % 7; // 0 = lundi
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -92,8 +127,72 @@
 
   const Store = {
     state: emptyState(),
-    DOMAINES, CATEGORIES, STATUTS, ROLES_SOIGNANTS, ROLES_NON_SOIGNANTS,
-    uid,
+    DOMAINES, CATEGORIES, STATUTS, ROLES_SOIGNANTS, ROLES_NON_SOIGNANTS, METIERS, FREQUENCES, JOURS,
+    uid, groupeOf,
+
+    // Inscrit au calendrier du senior les passages réguliers d'un intervenant (12 semaines à l'avance).
+    // Les passages déjà réalisés, annulés ou modifiés à la main sont conservés.
+    planifier(senior, p) {
+      const t = isoLocal(new Date());
+      const keep = (i) => !(i.sourceId === p.id && i.date >= t && i.statut === 'prevue' && !i.modifie);
+      this.state.interventions = this.state.interventions.filter(keep);
+      if (!p.planifier || !p.frequence || p.frequence === 'demande') return 0;
+      const taken = new Set(this.state.interventions.filter(i => i.sourceId === p.id).map(i => i.date));
+      const debut = p.debut || t;
+      const start = debut > t ? debut : t;
+      let end = addDays(t, HORIZON);
+      if (p.fin && p.fin < end) end = p.fin;
+      const jours = (p.jours && p.jours.length ? p.jours : [dow(debut)]).map(Number);
+      const dates = [];
+      if (p.frequence === 'ponctuel') { if (debut >= t && debut <= end) dates.push(debut); }
+      else if (p.frequence === 'mensuel') {
+        const dd = Number(debut.slice(8, 10));
+        for (let x = new Date(start.slice(0, 7) + '-01T12:00:00'); isoLocal(x) <= end; x.setMonth(x.getMonth() + 1)) {
+          const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
+          const iso = isoLocal(new Date(x.getFullYear(), x.getMonth(), Math.min(dd, last)));
+          if (iso >= start && iso <= end) dates.push(iso);
+        }
+      } else {
+        const anchor = addDays(debut, -dow(debut));
+        for (let iso = start; iso <= end; iso = addDays(iso, 1)) {
+          if (p.frequence === 'quotidien') { dates.push(iso); continue; }
+          if (!jours.includes(dow(iso))) continue;
+          if (p.frequence === 'quinzaine') {
+            const weeks = Math.round((new Date(addDays(iso, -dow(iso)) + 'T12:00:00') - new Date(anchor + 'T12:00:00')) / (7 * 864e5));
+            if (weeks % 2) continue;
+          }
+          dates.push(iso);
+        }
+      }
+      const g = METIERS[groupeOf(p)];
+      dates.filter(x => !taken.has(x)).forEach(date => this.state.interventions.push({
+        id: uid(), seniorId: senior.id, sourceId: p.id, date, heure: p.heure || '', duree: Number(p.duree) || '',
+        type: p.prestation || p.role, intervenant: p.nom, role: p.role, categorie: p.categorie || (g ? g.categorie : 'non-soignant'),
+        motif: p.motif || '', lieu: p.lieu || '', statut: 'prevue', cr: ''
+      }));
+      this.save();
+      return dates.length;
+    },
+    // Prolonge les plannings réguliers à chaque ouverture
+    planifierTout() {
+      this.state.seniors.forEach(s => (s.intervenants || []).filter(p => p.planifier).forEach(p => this.planifier(s, p)));
+    },
+    resumePlanning(p) {
+      if (!p.frequence) return '';
+      if (p.frequence === 'demande') return 'À la demande';
+      const parts = [];
+      if (['hebdo', 'quinzaine'].includes(p.frequence) && p.jours && p.jours.length) parts.push(p.jours.map(j => JOURS[j]).join(', '));
+      parts.push(FREQUENCES[p.frequence].toLowerCase());
+      if (p.heure) parts.push('à ' + p.heure.replace(':', 'h'));
+      if (p.duree) parts.push(p.duree >= 60 ? `${Math.floor(p.duree / 60)} h${p.duree % 60 ? String(p.duree % 60).padStart(2, '0') : ''}` : `${p.duree} min`);
+      const fmt = (x) => x.split('-').reverse().join('/');
+      if (p.frequence === 'ponctuel' && p.debut) parts.push('le ' + fmt(p.debut));
+      else if (p.debut) parts.push('depuis le ' + fmt(p.debut));
+      if (p.fin) parts.push("jusqu'au " + fmt(p.fin));
+      const s = parts.join(' · ');
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    },
+
 
     async load() {
       let data = null;
@@ -185,12 +284,15 @@
           { id: uid(), prenom: 'Paul', nom: 'Martin', lien: 'Fils', tel: '06 00 00 00 02', email: 'paul.martin@example.com', principal: false }
         ],
         intervenants: [
-          { id: uid(), nom: 'Dr Bernard', role: 'Médecin traitant', categorie: 'soignant', structure: 'Cabinet du Parc', tel: '', email: '' },
-          { id: uid(), nom: 'Sophie Leroy', role: 'Infirmier(ère)', categorie: 'soignant', structure: 'Cabinet IDE Lyon 6', tel: '', email: '' },
-          { id: uid(), nom: 'Marc Petit', role: 'Kinésithérapeute', categorie: 'soignant', structure: '', tel: '', email: '' },
-          { id: uid(), nom: 'Amina Diallo', role: 'Aide à domicile', categorie: 'non-soignant', structure: 'Domicile Services', tel: '', email: '' },
-          { id: uid(), nom: 'Lucie Morel', role: 'Ergothérapeute', categorie: 'soignant', structure: '', tel: '', email: '' },
-          { id: uid(), nom: 'Maître Garnier', role: 'Notaire', categorie: 'non-soignant', structure: 'Étude Garnier', tel: '', email: '' }
+          { id: uid(), nom: 'Dr Bernard', role: 'Médecin traitant', groupe: 'medical', categorie: 'soignant', structure: 'Cabinet du Parc', tel: '04 00 00 00 10', email: '', lieu: 'Cabinet', frequence: 'demande', notes: 'Consultations au cabinet ; visite à domicile possible le jeudi.' },
+          { id: uid(), nom: 'Sophie Leroy', role: 'Infirmier(ère)', groupe: 'paramedical', categorie: 'soignant', structure: 'Cabinet IDE Lyon 6', tel: '06 00 00 00 11', email: '', lieu: 'Domicile', frequence: 'hebdo', jours: [0], heure: '08:30', duree: 20, prestation: 'Passage infirmier', motif: 'Préparation du pilulier de la semaine', planifier: true, debut: d(-60) },
+          { id: uid(), nom: 'Marc Petit', role: 'Kinésithérapeute', groupe: 'paramedical', categorie: 'soignant', structure: '', tel: '06 00 00 00 12', email: '', lieu: 'Domicile', frequence: 'hebdo', jours: [1, 3], heure: '09:30', duree: 30, prestation: 'Séance de kinésithérapie', motif: 'Rééducation à l\'équilibre', planifier: true, debut: d(-60), fin: d(70), notes: 'Ordonnance de 30 séances.' },
+          { id: uid(), nom: 'Amina Diallo', role: 'Ménage', groupe: 'sap', categorie: 'non-soignant', structure: 'Domicile Services', tel: '06 00 00 00 13', email: '', lieu: 'Domicile', frequence: 'hebdo', jours: [4], heure: '14:00', duree: 120, prestation: 'Ménage', motif: 'Entretien du logement', planifier: true, debut: d(-90) },
+          { id: uid(), nom: 'Amina Diallo', role: 'Courses', groupe: 'sap', categorie: 'non-soignant', structure: 'Domicile Services', tel: '06 00 00 00 13', email: '', lieu: 'Domicile', frequence: 'hebdo', jours: [2], heure: '10:00', duree: 60, prestation: 'Courses', motif: 'Faire les courses de la semaine', planifier: true, debut: d(-90) },
+          { id: uid(), nom: 'Repassage Express', role: 'Repassage', groupe: 'sap', categorie: 'non-soignant', structure: 'Repassage Express', tel: '', email: '', lieu: 'Domicile', frequence: 'quinzaine', jours: [2], heure: '15:00', duree: 60, prestation: 'Repassage', motif: 'Linge collecté et rapporté', planifier: true, debut: d(1) },
+          { id: uid(), nom: 'Lucie Morel', role: 'Ergothérapeute', groupe: 'paramedical', categorie: 'soignant', structure: '', tel: '', email: '', lieu: 'Domicile', frequence: 'ponctuel' },
+          { id: uid(), nom: 'Salon Belle Époque', role: 'Coiffeur', groupe: 'autres', categorie: 'non-soignant', structure: '', tel: '', email: '', lieu: 'Domicile', frequence: 'mensuel', heure: '11:00', duree: 45, prestation: 'Coiffeur à domicile', motif: 'Coupe et mise en plis', planifier: true, debut: d(5) },
+          { id: uid(), nom: 'Maître Garnier', role: 'Notaire', groupe: 'autres', categorie: 'non-soignant', structure: 'Étude Garnier', tel: '', email: '', lieu: 'Étude', frequence: 'demande' }
         ]
       };
       const mk = (scores, comments) => {
@@ -244,15 +346,12 @@
         [-10, '09:30', I[2], 'Séance de kinésithérapie', 'Rééducation à l\'équilibre', 'faite', 'Bonne séance, progrès sur l\'appui unipodal.'],
         [-7, '10:00', I[0], 'Consultation de suivi', 'Renouvellement traitement tension', 'faite', 'Tension 13/8. Traitement renouvelé à l\'identique.'],
         [-6, '09:30', I[2], 'Séance de kinésithérapie', 'Rééducation à l\'équilibre', 'faite', ''],
-        [-3, '14:00', I[4], 'Visite ergothérapeute', 'Préconisations salle de bain', 'faite', 'Préconise barre supplémentaire + siège de douche.'],
+        [-3, '14:00', I[6], 'Visite ergothérapeute', 'Préconisations salle de bain', 'faite', 'Préconise barre supplémentaire + siège de douche.'],
         [-1, '08:30', I[1], 'Prise de sang', 'Bilan biologique annuel', 'reportee', 'Reportée : Mme Martin n\'était pas à jeun.'],
         [1, '08:30', I[1], 'Prise de sang', 'Bilan biologique annuel', 'prevue', ''],
-        [2, '09:30', I[2], 'Séance de kinésithérapie', 'Rééducation à l\'équilibre', 'prevue', ''],
-        [3, '10:00', I[3], 'Aide à domicile', 'Courses et entretien du logement', 'prevue', ''],
         [7, '15:00', { nom: 'Up&In', role: 'Coordinateur Up&In', categorie: 'upin' }, 'Installation téléassistance', 'Sécurité en cas de chute', 'prevue', ''],
-        [9, '09:30', I[2], 'Séance de kinésithérapie', 'Rééducation à l\'équilibre', 'prevue', ''],
         [14, '11:00', I[0], 'Consultation', 'Résultats de la prise de sang', 'prevue', ''],
-        [45, '16:00', I[5], 'Rendez-vous chez le notaire', 'Préparer la donation aux enfants', 'prevue', '']
+        [45, '16:00', I[8], 'Rendez-vous chez le notaire', 'Préparer la donation aux enfants', 'prevue', '']
       ].map(([o, h, who, type, motif, statut, cr]) => ({
         id: uid(), seniorId: sid, date: d(o), heure: h, duree: 60, type, motif, statut, cr,
         intervenant: who.nom, role: who.role, categorie: who.categorie, lieu: 'Domicile', transmis: statut === 'faite' && o < -5 ? d(o) : null
@@ -269,6 +368,7 @@
       this.state.bilans.push(...bilans);
       this.state.interventions.push(...interventions);
       this.state.comptesRendus.push(...comptesRendus);
+      senior.intervenants.filter(p => p.planifier).forEach(p => this.planifier(senior, p));
       this.save();
       return sid;
     }

@@ -1,5 +1,5 @@
 /* Le Cercle — service worker : fonctionnement hors ligne (iPad en visite à domicile). */
-const VERSION = 'le-cercle-v2';
+const VERSION = 'le-cercle-v3';
 const CORE = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/offre.js', './js/store.js', './js/charts.js', './js/emails.js', './js/app.js',
